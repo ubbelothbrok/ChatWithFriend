@@ -73,7 +73,7 @@ const ChatWindow = () => {
                     <input
                         type="text"
                         placeholder="Your name..."
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 mb-4"
+                        className="w-full px-4 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 mb-4"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         onKeyDown={handleKeyDown}
