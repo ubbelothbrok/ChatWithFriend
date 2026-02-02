@@ -14,6 +14,8 @@ const ChatWindow = () => {
     const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [username, setUsername] = useState("");
+    const [accessKey, setAccessKey] = useState("");
+    const [error, setError] = useState("");
     const [isUsernameSet, setIsUsernameSet] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -40,10 +42,17 @@ const ChatWindow = () => {
         setDisplayMessages(newDisplayMessages);
     }, [messages, username]);
 
-    const handleSetUsername = () => {
-        if (username.trim()) {
-            setIsUsernameSet(true);
+    const handleJoinChat = () => {
+        setError("");
+        if (!username.trim()) {
+            setError("Please enter your name");
+            return;
         }
+        if (accessKey !== "ashu") {
+            setError("Invalid access key");
+            return;
+        }
+        setIsUsernameSet(true);
     };
 
     const handleSend = () => {
@@ -56,7 +65,7 @@ const ChatWindow = () => {
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             if (!isUsernameSet) {
-                handleSetUsername();
+                handleJoinChat();
             } else {
                 handleSend();
             }
@@ -69,23 +78,40 @@ const ChatWindow = () => {
             <div className="flex-1 flex items-center justify-center bg-slate-50 h-full">
                 <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full mx-4">
                     <h2 className="text-2xl font-bold text-slate-800 mb-2">Welcome to Chat</h2>
-                    <p className="text-slate-500 mb-6">Enter your name to start chatting</p>
-                    <input
-                        type="text"
-                        placeholder="Your name..."
-                        className="w-full px-4 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 mb-4"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        autoFocus
-                    />
+                    <p className="text-slate-500 mb-6">Enter your name and access key to join</p>
+
+                    <div className="space-y-4 mb-6">
+                        <div>
+                            <input
+                                type="text"
+                                placeholder="Your name..."
+                                className="w-full px-4 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <input
+                                type="password"
+                                placeholder="Access Key"
+                                className="w-full px-4 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                value={accessKey}
+                                onChange={(e) => setAccessKey(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                            />
+                        </div>
+                        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                    </div>
+
                     <button
-                        onClick={handleSetUsername}
+                        onClick={handleJoinChat}
                         className="w-full py-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors font-medium"
                     >
                         Join Chat
                     </button>
-                    <div className="mt-4 flex items-center gap-2">
+                    <div className="mt-4 flex items-center gap-2 justify-center">
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                         <span className="text-xs text-slate-500">
                             {isConnected ? 'Connected to server' : 'Connecting...'}
