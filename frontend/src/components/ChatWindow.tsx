@@ -20,7 +20,9 @@ const ChatWindow = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Connect to Django WebSocket backend
-    const { messages, sendMessage, isConnected } = useWebSocket('ws://localhost:8000/ws/chat/');
+    // Use environment variable for production, fallback to localhost for development
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
+    const { messages, sendMessage, isConnected } = useWebSocket(wsUrl);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
