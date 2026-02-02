@@ -86,30 +86,55 @@ A real-time chat application built with Django (backend) and React (frontend) us
 
    Frontend will be running at `http://localhost:5173`
 
+## 🔐 Access Control
+
+To join the chat, you need the **Access Key**.
+- **Key**: `ashu`
+
+## 🌍 Deployment
+
+Since this app uses WebSockets, we use a split deployment strategy.
+
+### 1. Backend (Render)
+1. Go to [Render](https://render.com) and create a **Web Service**.
+2. **Root Directory**: `backend`
+3. **Build Command**: `./build.sh`
+4. **Start Command**: `daphne -b 0.0.0.0 -p $PORT chat_project.asgi:application`
+5. **Envs**: Set `SECRET_KEY`, `DEBUG=False`, and `ALLOWED_HOSTS`.
+
+### 2. Frontend (Vercel)
+1. Go to [Vercel](https://vercel.com) and import the repo.
+2. **Root Directory**: `frontend`
+3. **Envs**: Set `VITE_WS_URL` to your Render backend URL (e.g., `wss://your-app.onrender.com/ws/chat/`).
+
+---
+
+## 💡 Hybrid Setup (Local vs Production)
+
+The project is designed to run in both environments without manual code changes:
+
+- **Local**: If no environment variables are found, the backend defaults to `DEBUG=True` and SQLite. The frontend defaults to `ws://localhost:8000`.
+- **Production**: When deployed, it uses environment variables for security and connects to the production WebSocket URL.
+
 ## 🎮 Usage
 
-1. **Start the backend server** (in one terminal)
+### Local Development
+1. **Start Backend**:
    ```bash
-   cd backend
-   source venv/bin/activate.fish
-   python manage.py runserver 8000
+   cd backend && source venv/bin/activate.fish && python manage.py runserver 8000
+   ```
+2. **Start Frontend**:
+   ```bash
+   cd frontend && npm run dev
    ```
 
-2. **Start the frontend server** (in another terminal)
+### Accessing from other devices
+To test on your phone in the same network:
+1. Run backend with `0.0.0.0`:
    ```bash
-   cd frontend
-   npm run dev
+   python manage.py runserver 0.0.0.0:8000
    ```
-
-3. **Open your browser**
-   - Go to `http://localhost:5173`
-   - Enter your name to join the chat
-   - Start messaging!
-
-4. **Test real-time messaging**
-   - Open the app in multiple browser tabs/windows
-   - Enter different usernames
-   - Send messages and watch them appear in real-time across all windows
+2. Access via your computer's IP address.
 
 ## 📁 Project Structure
 
