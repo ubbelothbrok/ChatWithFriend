@@ -10,18 +10,25 @@ interface DisplayMessage {
     isMe: boolean;
 }
 
-const ChatWindow = () => {
+interface ChatWindowProps {
+    roomName: string;
+    username: string;
+    isJoined: boolean;
+    onJoin: (name: string) => void;
+}
+
+const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) => {
     const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
     const [inputValue, setInputValue] = useState("");
-    const [username, setUsername] = useState("");
+    const [localUsername, setLocalUsername] = useState(username);
     const [accessKey, setAccessKey] = useState("");
     const [error, setError] = useState("");
-    const [isUsernameSet, setIsUsernameSet] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Connect to Django WebSocket backend
     // Use environment variable for production, fallback to localhost for development
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
+    const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
+    const wsUrl = `${baseUrl}${roomName}/`;
     const { messages, sendMessage, isConnected } = useWebSocket(wsUrl);
 
     const scrollToBottom = () => {
@@ -46,7 +53,7 @@ const ChatWindow = () => {
 
     const handleJoinChat = () => {
         setError("");
-        if (!username.trim()) {
+        if (!localUsername.trim()) {
             setError("Please enter your name");
             return;
         }
@@ -54,11 +61,11 @@ const ChatWindow = () => {
             setError("Invalid access key");
             return;
         }
-        setIsUsernameSet(true);
+        onJoin(localUsername);
     };
 
     const handleSend = () => {
-        if (!inputValue.trim() || !isUsernameSet) return;
+        if (!inputValue.trim() || !isJoined) return;
 
         sendMessage(username, inputValue);
         setInputValue("");
@@ -66,7 +73,7 @@ const ChatWindow = () => {
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
-            if (!isUsernameSet) {
+            if (!isJoined) {
                 handleJoinChat();
             } else {
                 handleSend();
@@ -75,7 +82,7 @@ const ChatWindow = () => {
     };
 
     // Username setup screen
-    if (!isUsernameSet) {
+    if (!isJoined) {
         return (
             <div className="flex-1 flex items-center justify-center bg-slate-50 h-full">
                 <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full mx-4">
@@ -88,8 +95,8 @@ const ChatWindow = () => {
                                 type="text"
                                 placeholder="Your name..."
                                 className="w-full px-4 py-3 bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
+                                value={localUsername}
+                                onChange={(e) => setLocalUsername(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 autoFocus
                             />
@@ -129,7 +136,7 @@ const ChatWindow = () => {
             {/* Header */}
             <div className="p-4 bg-white border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h1 className="text-lg font-semibold text-slate-800">Global Chat</h1>
+                    <h1 className="text-lg font-semibold text-slate-800">Chat: {roomName}</h1>
                     <p className="text-xs text-slate-500">Chatting as {username}</p>
                 </div>
                 <div className="flex items-center gap-2">

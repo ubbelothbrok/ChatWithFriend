@@ -1,11 +1,11 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from .models import Message
+from .models import Message, Room
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.room_name = 'global_chat'
+        self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = 'chat_%s' % self.room_name
 
         # Join room group
@@ -15,9 +15,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
-
-        # Send last 50 messages on join (optional improvement)
-        # await self.send_last_messages()
 
     async def disconnect(self, close_code):
         # Leave room group
@@ -33,7 +30,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender = text_data_json.get('sender', 'Anonymous')
 
         # Save message to database
-        await self.save_message(sender, message)
+        await self.save_message(sender, message, self.room_name)
 
         # Send message to room group
         await self.channel_layer.group_send(
@@ -57,5 +54,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
-    def save_message(self, sender, content):
-        return Message.objects.create(sender=sender, content=content)
+    def save_message(self, sender, content, room_name):
+        room, created = Room.objects.get_or_create(name=room_name)
+        return Message.objects.create(sender=sender, content=content, room=room)
