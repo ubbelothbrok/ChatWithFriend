@@ -15,3 +15,14 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.sender}: {self.content}"
+
+class Reaction(models.Model):
+    message = models.ForeignKey(Message, related_name='message_reactions', on_delete=models.CASCADE)
+    sender = models.CharField(max_length=255)
+    emoji = models.CharField(max_length=10) # Store the emoji character
+
+    class Meta:
+        unique_together = ('message', 'sender', 'emoji') # One user can react with same emoji only once per message
+
+    def __str__(self):
+        return f"{self.sender} reacted {self.emoji} to message {self.message.id}"
