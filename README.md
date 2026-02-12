@@ -5,16 +5,18 @@ A real-time chat application built with Django (backend) and React (frontend) us
 ## 🚀 Features
 
 - **Real-time messaging** - Messages broadcast instantly to all connected users
-- **Message persistence** - All messages saved to database
-- **Open access** - Anyone can join with just a username
-- **Connection status** - Visual indicator shows connection state
-- **Message grouping** - Consecutive messages from same sender are grouped together
-- **Responsive design** - Works on mobile and desktop
+- **Emoji Picker** - Insert emojis into your messages with a built-in selector
+- **Message Reactions** - React to any message with emojis (supports counts and toggling)
+- **Typing Indicator** - See in real-time when others are typing
+- **Capsule UI** - Modern, floating capsule-style header and input area
+- **Message persistence** - All messages and reactions saved to database
+- **Open access** - Join with a username and access key
+- **Responsive design** - Works seamlessly on mobile and desktop
 
 ## 🛠️ Tech Stack
 
 ### Backend
-- Django 6.0
+- Django (v6.0+)
 - Django Channels (WebSockets)
 - Daphne (ASGI server)
 - SQLite database
@@ -24,10 +26,12 @@ A real-time chat application built with Django (backend) and React (frontend) us
 - TypeScript
 - Vite
 - Tailwind CSS
+- Lucide React (Icons)
+- Emoji Picker React
 
 ## 📋 Prerequisites
 
-- Python 3.14+ installed
+- Python 3.10+ installed
 - Node.js and npm installed
 - Fish shell (or bash/zsh - adjust activation commands accordingly)
 
@@ -88,7 +92,7 @@ A real-time chat application built with Django (backend) and React (frontend) us
 
 ## 🔐 Access Control
 
-To join the chat, you need the **Access Key**.
+To join the chat, use the global access key:
 - **Key**: `ashu`
 
 ## 🌍 Deployment
@@ -136,7 +140,7 @@ To test on your phone in the same network:
    ```
 2. Access via your computer's IP address.
 
-## 📁 Project Structure
+## � Project Structure
 
 ```
 ChatWithFriend/
@@ -168,26 +172,38 @@ ChatWithFriend/
 └── README.md
 ```
 
-## 🔌 WebSocket API
+## �🔌 WebSocket API
 
-### Connect
-```
-ws://localhost:8000/ws/chat/
-```
+### Message Types
 
-### Send Message
+#### 1. Chat Message (`chat_message`)
+**Send**:
 ```json
 {
+  "type": "chat_message",
   "sender": "username",
-  "message": "Hello everyone!"
+  "message": "Hello!"
 }
 ```
 
-### Receive Message
+#### 2. Reaction (`reaction`)
+**Send**:
 ```json
 {
+  "type": "reaction",
+  "message_id": 1,
   "sender": "username",
-  "message": "Hello everyone!"
+  "emoji": "👍"
+}
+```
+
+#### 3. Typing Status (`typing`)
+**Send**:
+```json
+{
+  "type": "typing",
+  "sender": "username",
+  "is_typing": true
 }
 ```
 
@@ -207,18 +223,12 @@ ws://localhost:8000/ws/chat/
 
 ## 🚀 Future Enhancements
 
-- [ ] User authentication
-- [ ] Private messaging
+- [ ] User authentication (Google/GitHub)
+- [ ] Multiple chat rooms
 - [ ] Message history on join
-- [ ] Typing indicators
 - [ ] Read receipts
 - [ ] File/image sharing
-- [ ] Emoji support
-- [ ] Deploy to production
 
 ## 📝 License
 
 This project is open source and available under the MIT License.
-
-
-
