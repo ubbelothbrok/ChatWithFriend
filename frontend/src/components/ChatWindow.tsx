@@ -35,7 +35,7 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
     const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
     const wsUrl = `${baseUrl}${roomName}/`;
     const { messages, sendMessage, sendReaction, sendTyping, isConnected, typingUsers } = useWebSocket(wsUrl);
-    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,8 +167,8 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
         return (
             <div className="flex-1 flex items-center justify-center bg-slate-50 h-full">
                 <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full mx-4">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Welcome to Chat</h2>
-                    <p className="text-slate-500 mb-6">Enter your name and access key to join</p>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2 text-center">Welcome to Chat</h2>
+                    <p className="text-slate-500 mb-6 text-center">Enter your name and access key to join</p>
 
                     <div className="space-y-4 mb-6">
                         <div>
@@ -219,8 +219,7 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
             {/* Header */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 w-[90%] md:w-auto max-w-2xl bg-white/80 backdrop-blur-md shadow-lg border border-white/20 rounded-full px-6 py-3 flex items-center justify-between gap-4 md:gap-12 transition-all hover:bg-white/90">
                 <div>
-                    <h1 className="text-base md:text-lg font-semibold text-slate-800">Chat: {roomName}</h1>
-                    <p className="text-[10px] md:text-xs text-slate-500">Chatting as {username}</p>
+                    <h1 className="text-base md:text-lg font-semibold text-slate-800">Chatting as {username}</h1>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
