@@ -64,9 +64,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'message_id': message_id,
                         'sender': sender,
                         'emoji': emoji,
-                        'action': action, # 'added' or 'removed'
                     }
                 )
+        elif message_type == 'typing':
+            sender = text_data_json['sender']
+            is_typing = text_data_json['is_typing']
+
+            # Send typing status to room group
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'user_typing',
+                    'sender': sender,
+                    'is_typing': is_typing
+                }
+            )
 
     # Receive message from room group
     async def chat_message(self, event):
@@ -88,6 +100,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'sender': event['sender'],
             'emoji': event['emoji'],
             'action': event['action']
+        }))
+
+    async def user_typing(self, event):
+        # Send typing status to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'user_typing',
+            'sender': event['sender'],
+            'is_typing': event['is_typing']
         }))
 
     @database_sync_to_async

@@ -13,11 +13,14 @@ interface UseWebSocketReturn {
     sendMessage: (sender: string, message: string) => void;
     sendReaction: (messageId: number, emoji: string, sender: string) => void;
     isConnected: boolean;
+    typingUsers: string[];
+    sendTyping: (isTyping: boolean, sender: string) => void;
 }
 
 const useWebSocket = (url: string): UseWebSocketReturn => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isConnected, setIsConnected] = useState(false);
+    const [typingUsers, setTypingUsers] = useState<string[]>([]);
     const ws = useRef<WebSocket | null>(null);
 
     useEffect(() => {
@@ -37,7 +40,7 @@ const useWebSocket = (url: string): UseWebSocketReturn => {
                     id: data.id,
                     sender: data.sender,
                     message: data.message,
-                    reactions: data.reactions || [], // Array of { emoji, sender } or similar?
+                    reactions: data.reactions || [],
                     timestamp: data.timestamp
                 }]);
             } else if (data.type === 'reaction_update') {
@@ -57,6 +60,14 @@ const useWebSocket = (url: string): UseWebSocketReturn => {
                     }
                     return msg;
                 }));
+            } else if (data.type === 'user_typing') {
+                setTypingUsers((prev) => {
+                    if (data.is_typing) {
+                        return prev.includes(data.sender) ? prev : [...prev, data.sender];
+                    } else {
+                        return prev.filter(user => user !== data.sender);
+                    }
+                });
             }
         };
 
@@ -96,7 +107,17 @@ const useWebSocket = (url: string): UseWebSocketReturn => {
         }
     }, []);
 
-    return { messages, sendMessage, sendReaction, isConnected };
+    const sendTyping = useCallback((isTyping: boolean, sender: string) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+                type: 'typing',
+                is_typing: isTyping,
+                sender
+            }));
+        }
+    }, []);
+
+    return { messages, sendMessage, sendReaction, sendTyping, isConnected, typingUsers };
 };
 
 export default useWebSocket;

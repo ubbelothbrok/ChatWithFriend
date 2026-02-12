@@ -34,7 +34,8 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
     // Use environment variable for production, fallback to localhost for development
     const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
     const wsUrl = `${baseUrl}${roomName}/`;
-    const { messages, sendMessage, sendReaction, isConnected } = useWebSocket(wsUrl);
+    const { messages, sendMessage, sendReaction, sendTyping, isConnected, typingUsers } = useWebSocket(wsUrl);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,7 +43,7 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
 
     useEffect(() => {
         scrollToBottom();
-    }, [displayMessages]);
+    }, [displayMessages, typingUsers]);
 
     // Close emoji picker when clicking outside
     useEffect(() => {
@@ -65,7 +66,9 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
             id: msg.id || Date.now() + index,
             sender: msg.sender,
             content: msg.message,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: msg.timestamp
+                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isMe: msg.sender === username,
             reactions: msg.reactions || []
         }));
@@ -85,12 +88,44 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
         onJoin(localUsername);
     };
 
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setInputValue(e.target.value);
+
+        if (isJoined) {
+            // Clear existing timeout
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+
+            // Send typing started if not already (logic simplified: just send true on change,
+            // backend/state handles duplicates, but good to check if we want to reduce traffic.
+            // For now, let's just send true, but maybe only if we weren't "typing" in our local intent?
+            // Actually, simplest is: send true, set timeout to send false.
+            // Optimization: We could track if we already sent 'true' to avoid spamming.
+            // But consumers.py broadcasts everything.
+            // Let's rely on the fact that this event is small.
+            // Or better:
+            sendTyping(true, username);
+
+            // Set timeout to stop typing
+            typingTimeoutRef.current = setTimeout(() => {
+                sendTyping(false, username);
+            }, 2000);
+        }
+    };
+
     const handleSend = () => {
         if (!inputValue.trim() || !isJoined) return;
 
         sendMessage(username, inputValue);
         setInputValue("");
         setShowEmojiPicker(false);
+
+        // Stop typing immediately when sent
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        sendTyping(false, username);
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -176,6 +211,8 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
             </div>
         );
     }
+
+    const otherTypingUsers = typingUsers.filter(u => u !== username);
 
     return (
         <div className="flex-1 flex flex-col bg-slate-50 h-full relative w-full">
@@ -272,6 +309,21 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
                         </div>
                     );
                 })}
+
+                {/* Typing Indicator */}
+                {otherTypingUsers.length > 0 && (
+                    <div className="flex items-center gap-2 text-slate-400 text-xs ml-4">
+                        <div className="flex gap-1">
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
+                        </div>
+                        <span>
+                            {otherTypingUsers.join(", ")} {otherTypingUsers.length === 1 ? "is" : "are"} typing...
+                        </span>
+                    </div>
+                )}
+
                 <div ref={messagesEndRef} />
             </div>
 
@@ -307,7 +359,7 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
                         placeholder="Message..."
                         className="flex-1 bg-transparent px-2 md:px-0 py-2 md:py-3 focus:outline-none text-slate-600 placeholder:text-slate-400 text-sm md:text-base"
                         value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
+                        onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                     />
 
