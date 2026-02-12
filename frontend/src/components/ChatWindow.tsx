@@ -1,4 +1,4 @@
-import { Send, Smile } from "lucide-react";
+import { Send, Smile, Reply, Edit2, X, Trash2, Video, Paperclip } from "lucide-react";
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import useWebSocket from "../hooks/useWebSocket";
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
@@ -10,6 +10,13 @@ interface DisplayMessage {
     time: string;
     isMe: boolean;
     reactions: { emoji: string; sender: string }[];
+    parent_id?: number | null;
+    parent_content?: string | null;
+    parent_sender?: string | null;
+    is_edited?: boolean;
+    file_url?: string | null;
+    file_type?: 'image' | 'video' | null;
+    file_name?: string | null;
 }
 
 interface ChatWindowProps {
@@ -27,6 +34,8 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
     const [error, setError] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [activeReactionMessageId, setActiveReactionMessageId] = useState<number | null>(null);
+    const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
+    const [editingMessage, setEditingMessage] = useState<DisplayMessage | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const emojiPickerRef = useRef<HTMLDivElement>(null);
 
@@ -34,8 +43,14 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
     // Use environment variable for production, fallback to localhost for development
     const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat/';
     const wsUrl = `${baseUrl}${roomName}/`;
-    const { messages, sendMessage, sendReaction, sendTyping, isConnected, typingUsers } = useWebSocket(wsUrl);
+    const { messages, sendMessage, sendReaction, sendTyping, editMessage, deleteMessage, uploadFile, isConnected, typingUsers } = useWebSocket(wsUrl);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // File upload state and refs
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [filePreview, setFilePreview] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -70,7 +85,14 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
                 ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isMe: msg.sender === username,
-            reactions: msg.reactions || []
+            reactions: msg.reactions || [],
+            parent_id: msg.parent_id,
+            parent_content: msg.parent_content,
+            parent_sender: msg.parent_sender,
+            is_edited: msg.is_edited,
+            file_url: msg.file_url,
+            file_type: msg.file_type,
+            file_name: msg.file_name
         }));
         setDisplayMessages(newDisplayMessages);
     }, [messages, username]);
@@ -114,18 +136,81 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
         }
     };
 
-    const handleSend = () => {
-        if (!inputValue.trim() || !isJoined) return;
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-        sendMessage(username, inputValue);
-        setInputValue("");
-        setShowEmojiPicker(false);
+        // Validation
+        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
 
-        // Stop typing immediately when sent
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
+        const isImage = allowedImageTypes.includes(file.type);
+        const isVideo = allowedVideoTypes.includes(file.type);
+
+        if (!isImage && !isVideo) {
+            setError("Invalid file type. Only images and videos are allowed.");
+            return;
         }
-        sendTyping(false, username);
+
+        const maxSize = isImage ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+        if (file.size > maxSize) {
+            setError(`File too large. Max size is ${maxSize / (1024 * 1024)}MB.`);
+            return;
+        }
+
+        setSelectedFile(file);
+        setError("");
+
+        // Create preview
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setFilePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleRemoveFile = () => {
+        setSelectedFile(null);
+        setFilePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const handleSend = async () => {
+        if ((!inputValue.trim() && !selectedFile) || !isJoined) return;
+
+        try {
+            if (editingMessage) {
+                // Edit existing message
+                editMessage(editingMessage.id, inputValue, username);
+                setEditingMessage(null);
+            } else if (selectedFile) {
+                // Upload file
+                setIsUploading(true);
+                await uploadFile(selectedFile, username, roomName, replyingTo?.id, inputValue);
+                handleRemoveFile();
+                setReplyingTo(null);
+            } else {
+                // Send new message (optionally replying)
+                sendMessage(username, inputValue, replyingTo?.id);
+                setReplyingTo(null);
+            }
+
+            setInputValue("");
+            setShowEmojiPicker(false);
+            setError("");
+
+            // Stop typing immediately when sent
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            sendTyping(false, username);
+        } catch (err: any) {
+            setError(err.message || "Failed to send message");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -145,6 +230,29 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
             setShowEmojiPicker(false);
         } else {
             setInputValue(prev => prev + emojiData.emoji);
+        }
+    };
+
+    const handleReply = (msg: DisplayMessage) => {
+        setReplyingTo(msg);
+        setEditingMessage(null);
+    };
+
+    const handleEdit = (msg: DisplayMessage) => {
+        setEditingMessage(msg);
+        setInputValue(msg.content);
+        setReplyingTo(null);
+    };
+
+    const cancelReplyOrEdit = () => {
+        setReplyingTo(null);
+        setEditingMessage(null);
+        setInputValue("");
+    };
+
+    const handleDelete = (msg: DisplayMessage) => {
+        if (confirm('Are you sure you want to delete this message?')) {
+            deleteMessage(msg.id, username);
         }
     };
 
@@ -255,26 +363,100 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
                         >
                             <div className={`flex flex-col gap-1 max-w-[75%] md:max-w-[60%] ${msg.isMe ? 'items-end' : 'items-start'}`}>
                                 <div className="relative">
+                                    {/* Parent Message Preview for Replies */}
+                                    {msg.parent_content && (
+                                        <div className={`mb-2 p-2.5 rounded-xl text-xs border-l-4 ${msg.isMe
+                                            ? 'bg-indigo-500/30 border-indigo-300/60 text-white'
+                                            : 'bg-slate-100 border-primary text-slate-700'
+                                            }`}>
+                                            <div className="flex items-center gap-1 mb-1">
+                                                <Reply className={`w-3 h-3 ${msg.isMe ? 'text-white/80' : 'text-slate-500'}`} />
+                                                <span className={`font-semibold text-[10px] ${msg.isMe ? 'text-white/90' : 'text-slate-600'}`}>{msg.parent_sender}</span>
+                                            </div>
+                                            <p className={`${msg.isMe ? 'text-white/95' : 'text-slate-600'} max-w-full`} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                                {msg.parent_content}
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div
-                                        className={`p-3 md:p-4 rounded-2xl shadow-sm text-sm md:text-[15px] leading-relaxed break-words ${msg.isMe
+                                        className={`p-1.5 md:p-2 rounded-2xl shadow-sm text-sm md:text-[15px] leading-relaxed break-words overflow-hidden ${msg.isMe
                                             ? 'bg-primary text-white rounded-tr-none'
                                             : 'bg-white text-slate-600 rounded-tl-none border border-slate-100'
                                             }`}
                                     >
-                                        {msg.content}
+                                        {msg.file_url && (
+                                            <div className="mb-1 rounded-xl overflow-hidden bg-slate-100/10">
+                                                {msg.file_type === 'image' ? (
+                                                    <img
+                                                        src={msg.file_url.startsWith('http') ? msg.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${msg.file_url}`}
+                                                        alt={msg.file_name || 'Image'}
+                                                        className="w-full max-h-[300px] md:max-h-[400px] object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                                        onClick={() => window.open(msg.file_url?.startsWith('http') ? msg.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${msg.file_url}`, '_blank')}
+                                                    />
+                                                ) : msg.file_type === 'video' ? (
+                                                    <video
+                                                        src={msg.file_url.startsWith('http') ? msg.file_url : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${msg.file_url}`}
+                                                        controls
+                                                        className="w-full max-h-[300px] md:max-h-[400px]"
+                                                    />
+                                                ) : null}
+                                            </div>
+                                        )}
+                                        {msg.content && (
+                                            <div className="px-2 pb-1.5 pt-0.5 md:px-3 md:pb-2">
+                                                {msg.content}
+                                                {msg.is_edited && (
+                                                    <span className="text-[10px] ml-2 opacity-60">(edited)</span>
+                                                )}
+                                            </div>
+                                        )}
+                                        {!msg.content && msg.is_edited && (
+                                            <div className="px-2 pb-1.5 pt-0.5 md:px-3 md:pb-2">
+                                                <span className="text-[10px] opacity-60">(edited)</span>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Add Reaction Button */}
-                                    <button
-                                        onClick={() => {
-                                            setActiveReactionMessageId(msg.id);
-                                            setShowEmojiPicker(true);
-                                        }}
-                                        className={`absolute top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white shadow-sm border border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity ${msg.isMe ? '-left-10' : '-right-10'
-                                            }`}
-                                    >
-                                        <Smile className="w-4 h-4 text-slate-400 hover:text-primary" />
-                                    </button>
+                                    {/* Action Buttons */}
+                                    <div className={`absolute top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.isMe ? '-left-24 md:-left-28' : '-right-24 md:-right-28'
+                                        }`}>
+                                        <button
+                                            onClick={() => handleReply(msg)}
+                                            className="p-1.5 rounded-full bg-white shadow-md border border-slate-200 hover:bg-slate-50 hover:scale-110 transition-all"
+                                            title="Reply"
+                                        >
+                                            <Reply className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 hover:text-primary" />
+                                        </button>
+                                        {msg.isMe && (
+                                            <>
+                                                <button
+                                                    onClick={() => handleEdit(msg)}
+                                                    className="p-1.5 rounded-full bg-white shadow-md border border-slate-200 hover:bg-slate-50 hover:scale-110 transition-all"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 hover:text-blue-500" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(msg)}
+                                                    className="p-1.5 rounded-full bg-white shadow-md border border-slate-200 hover:bg-red-50 hover:scale-110 transition-all"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 hover:text-red-500" />
+                                                </button>
+                                            </>
+                                        )}
+                                        <button
+                                            onClick={() => {
+                                                setActiveReactionMessageId(msg.id);
+                                                setShowEmojiPicker(true);
+                                            }}
+                                            className="p-1.5 rounded-full bg-white shadow-md border border-slate-200 hover:bg-slate-50 hover:scale-110 transition-all"
+                                            title="React"
+                                        >
+                                            <Smile className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 hover:text-yellow-500" />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Reactions Display */}
@@ -328,6 +510,44 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
 
             {/* Input */}
             <div className="p-3 md:p-6 bg-white border-t border-slate-100 relative">
+                {/* Reply/Edit Preview Bar */}
+                {(replyingTo || editingMessage) && (
+                    <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-3 mb-3 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3 text-sm">
+                            {replyingTo && (
+                                <>
+                                    <div className="p-2 bg-primary/10 rounded-lg">
+                                        <Reply className="w-4 h-4 text-primary" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-slate-500 mb-0.5">Replying to</div>
+                                        <span className="text-slate-700 font-medium">{replyingTo.sender}</span>
+                                        <span className="text-slate-500">: {replyingTo.content.length > 40 ? replyingTo.content.slice(0, 40) + '...' : replyingTo.content}</span>
+                                    </div>
+                                </>
+                            )}
+                            {editingMessage && (
+                                <>
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <Edit2 className="w-4 h-4 text-blue-500" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs text-slate-500 mb-0.5">Editing message</div>
+                                        <span className="text-slate-700">{editingMessage.content.length > 40 ? editingMessage.content.slice(0, 40) + '...' : editingMessage.content}</span>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <button
+                            onClick={cancelReplyOrEdit}
+                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors group"
+                            title="Cancel"
+                        >
+                            <X className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                        </button>
+                    </div>
+                )}
+
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                     <div
@@ -342,32 +562,90 @@ const ChatWindow = ({ roomName, username, isJoined, onJoin }: ChatWindowProps) =
                     </div>
                 )}
 
+                {/* File Preview before sending */}
+                {filePreview && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 p-3 bg-white border border-slate-100 shadow-xl rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
+                            {selectedFile?.type.startsWith('image/') ? (
+                                <img src={filePreview} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-primary">
+                                    <Video className="w-8 h-8" />
+                                </div>
+                            )}
+                            {isUploading && (
+                                <div className="absolute inset-0 bg-primary/40 backdrop-blur-[1px] flex items-center justify-center">
+                                    <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-700 truncate">{selectedFile?.name}</div>
+                            <div className="text-xs text-slate-400">
+                                {isUploading ? 'Uploading...' : `${(selectedFile!.size / 1024 / 1024).toFixed(2)} MB`}
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleRemoveFile}
+                            disabled={isUploading}
+                            className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                )}
+
                 <div className="flex items-center gap-2 md:gap-4 bg-slate-50 p-1.5 md:p-2 pr-1.5 md:pr-2 rounded-2xl border border-slate-100 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
-                    <button
-                        onClick={() => {
-                            setActiveReactionMessageId(null);
-                            setShowEmojiPicker(!showEmojiPicker);
-                        }}
-                        className="p-2 text-slate-400 hover:text-primary transition-colors hover:bg-slate-200/50 rounded-xl"
-                    >
-                        <Smile className="w-5 h-5 md:w-6 md:h-6" />
-                    </button>
+                    <div className="flex items-center">
+                        <button
+                            onClick={() => {
+                                setActiveReactionMessageId(null);
+                                setShowEmojiPicker(!showEmojiPicker);
+                            }}
+                            className="p-2 text-slate-400 hover:text-primary transition-colors hover:bg-slate-200/50 rounded-xl"
+                            title="Add Emoji"
+                        >
+                            <Smile className="w-5 h-5 md:w-6 md:h-6" />
+                        </button>
+
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 text-slate-400 hover:text-primary transition-colors hover:bg-slate-200/50 rounded-xl"
+                            title="Attach Image/Video"
+                            disabled={isUploading}
+                        >
+                            <Paperclip className="w-5 h-5 md:w-6 md:h-6" />
+                        </button>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            accept="image/*,video/*"
+                            className="hidden"
+                        />
+                    </div>
 
                     <input
                         type="text"
-                        placeholder="Message..."
+                        placeholder={selectedFile ? "Add a caption..." : "Message..."}
                         className="flex-1 bg-transparent px-2 md:px-0 py-2 md:py-3 focus:outline-none text-slate-600 placeholder:text-slate-400 text-sm md:text-base"
                         value={inputValue}
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
+                        disabled={isUploading}
                     />
 
                     <div className="flex items-center gap-1 md:gap-2 px-1 md:px-2">
                         <button
                             onClick={handleSend}
-                            className="p-2 md:p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors shadow-lg shadow-primary/30"
+                            disabled={isUploading || (!inputValue.trim() && !selectedFile)}
+                            className={`p-2 md:p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors shadow-lg shadow-primary/30 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <Send className="w-4 h-4 md:w-5 md:h-5 ml-0.5" />
+                            {isUploading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                                <Send className="w-4 h-4 md:w-5 md:h-5 ml-0.5" />
+                            )}
                         </button>
                     </div>
                 </div>
